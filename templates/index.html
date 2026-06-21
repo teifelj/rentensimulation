@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rentensimulation</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  body { background: #f0f2f5; font-size: 0.9rem; }
+  .card { border: none; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+  .nav-tabs .nav-link { color: #495057; font-size:.85rem; padding:.35rem .65rem; }
+  .nav-tabs .nav-link.active { font-weight: 600; }
+  .summary-table th, .summary-table td { text-align: right; padding: .3rem .55rem; white-space:nowrap; }
+  .summary-table th:first-child, .summary-table td:first-child { text-align: left; }
+  .monthly-table { font-size: 0.78rem; }
+  .monthly-table thead th { position: sticky; top: 0; background: #343a40; color: #fff; z-index: 1; white-space:nowrap; }
+  .annual-table { font-size: 0.82rem; }
+  .annual-table thead th { background:#495057; color:#fff; }
+  .section-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: .05em; color: #6c757d; margin-bottom: .25rem; margin-top:.6rem; }
+  #toastContainer { position: fixed; top: 1rem; right: 1rem; z-index: 9999; }
+  .form-label { font-weight: 500; margin-bottom:.15rem; }
+  .rv-block { background:#f8f9fa; border-radius:6px; padding:.5rem .6rem; margin-bottom:.4rem; }
+  .rv-block small { font-weight:600; color:#495057; }
+</style>
+</head>
+<body>
+
+<div id="toastContainer"></div>
+
+<nav class="navbar navbar-dark bg-dark px-3 py-2 mb-3">
+  <span class="navbar-brand mb-0 h5"><i class="bi bi-piggy-bank-fill me-2"></i>Rentensimulation</span>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <select id="scenarioSelect" class="form-select form-select-sm" style="min-width:190px">
+      <option value="">— Szenario wählen —</option>
+    </select>
+    <button class="btn btn-sm btn-info text-white" onclick="loadScenario()"><i class="bi bi-folder2-open"></i> Laden</button>
+    <button class="btn btn-sm btn-outline-light" onclick="newScenario()"><i class="bi bi-plus"></i> Neu</button>
+    <button class="btn btn-sm btn-outline-warning" onclick="saveScenario()"><i class="bi bi-floppy"></i> Speichern</button>
+    <button class="btn btn-sm btn-outline-danger" onclick="deleteScenario()"><i class="bi bi-trash"></i></button>
+  </div>
+</nav>
+
+<div class="container-fluid px-3">
+<div class="row g-3">
+
+<!-- LEFT: Input form -->
+<div class="col-lg-5 col-xl-4">
+  <div class="card">
+    <div class="card-body p-3">
+      <ul class="nav nav-tabs mb-3" id="inputTabs">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabP1">Person 1</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabP2">Person 2</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabKapital">Kapital</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabVorruhe">Vorruhestand</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabSonstiges">Sonstiges</a></li>
+      </ul>
+
+      <div class="tab-content">
+
+        <!-- ===== Person 1 ===== -->
+        <div class="tab-pane fade show active" id="tabP1">
+          <div class="section-label">Persönliche Daten</div>
+          <div class="row g-2 mb-1">
+            <div class="col-6">
+              <label class="form-label">Geburtsjahr</label>
+              <input type="number" class="form-control form-control-sm" id="p1_birth_year" value="1963" min="1940" max="1980">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Geburtsmonat</label>
+              <input type="number" class="form-control form-control-sm" id="p1_birth_month" value="1" min="1" max="12">
+            </div>
+          </div>
+          <div class="row g-2 mb-1">
+            <div class="col-7">
+              <label class="form-label">Gewünschtes Rentenalter</label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control" id="p1_pension_age" value="67" min="60" max="70" step="0.5" oninput="updateAbschlagInfo()">
+                <span class="input-group-text">Jahre</span>
+              </div>
+            </div>
+            <div class="col-5 d-flex align-items-end">
+              <span id="p1_abschlag_info" class="text-danger fw-bold small"></span>
+            </div>
+          </div>
+
+          <!-- Abschlagsfreie Rente -->
+          <div class="border rounded p-2 mb-2 bg-light">
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="checkbox" id="p1_abschlagsfrei" onchange="updateAbschlagInfo()">
+              <label class="form-check-label fw-bold" for="p1_abschlagsfrei">
+                Abschlagsfreie Rente (bes. langjährig Versicherte)
+              </label>
+            </div>
+            <div id="p1_abschlagsfrei_fields">
+              <div class="row g-1">
+                <div class="col-6">
+                  <label class="form-label mb-0" style="font-size:.75rem">Beitragsjahre</label>
+                  <input type="number" class="form-control form-control-sm" id="p1_beitragsjahre" value="45" min="30" max="50" oninput="updateAbschlagInfo()">
+                </div>
+                <div class="col-6 d-flex align-items-end">
+                  <span id="p1_abschlagsfrei_info" class="text-info small"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-label">Gesetzliche Rente (brutto bei 67)</div>
+          <div class="input-group input-group-sm mb-1">
+            <input type="number" class="form-control" id="p1_gesetzliche_rente" value="1800" min="0">
+            <span class="input-group-text">€/Monat</span>
+          </div>
+
+          <div class="section-label">Betriebsrente (brutto)</div>
+          <div class="input-group input-group-sm mb-1">
+            <input type="number" class="form-control" id="p1_betriebsrente" value="0" min="0">
+            <span class="input-group-text">€/Monat</span>
+          </div>
+
+          <div class="section-label">Private Rentenversicherungen</div>
+          <div class="rv-block">
+            <div class="row g-1 align-items-center mb-1"><div class="col-12"><small>RV 1</small></div></div>
+            <div class="row g-1">
+              <div class="col-5">
+                <input type="number" class="form-control form-control-sm" id="p1_rv1_amount" value="0" min="0" placeholder="€/Monat">
+              </div>
+              <div class="col-4">
+                <div class="input-group input-group-sm">
+                  <input type="number" class="form-control" id="p1_rv1_tax_pct" value="18" min="0" max="100">
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+              <div class="col-3">
+                <input type="number" class="form-control form-control-sm" id="p1_rv1_start_age" value="67" min="55" max="80" placeholder="Alter">
+              </div>
+            </div>
+          </div>
+          <div class="rv-block">
+            <div class="row g-1 align-items-center mb-1"><div class="col-12"><small>RV 2</small></div></div>
+            <div class="row g-1">
+              <div class="col-5"><input type="number" class="form-control form-control-sm" id="p1_rv2_amount" value="0" min="0" placeholder="€/Monat"></div>
+              <div class="col-4"><div class="input-group input-group-sm"><input type="number" class="form-control" id="p1_rv2_tax_pct" value="18" min="0" max="100"><span class="input-group-text">%</span></div></div>
+              <div class="col-3"><input type="number" class="form-control form-control-sm" id="p1_rv2_start_age" value="67" min="55" max="80"></div>
+            </div>
+          </div>
+          <div class="rv-block">
+            <div class="row g-1 align-items-center mb-1"><div class="col-12"><small>RV 3</small></div></div>
+            <div class="row g-1">
+              <div class="col-5"><input type="number" class="form-control form-control-sm" id="p1_rv3_amount" value="0" min="0" placeholder="€/Monat"></div>
+              <div class="col-4"><div class="input-group input-group-sm"><input type="number" class="form-control" id="p1_rv3_tax_pct" value="18" min="0" max="100"><span class="input-group-text">%</span></div></div>
+              <div class="col-3"><input type="number" class="form-control form-control-sm" id="p1_rv3_start_age" value="67" min="55" max="80"></div>
+            </div>
+          </div>
+
+          <div class="section-label">Krankenversicherung</div>
+          <div class="mb-1">
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="kv_type" id="kv_gesetzlich" value="gesetzlich" checked onchange="toggleKV()">
+              <label class="form-check-label" for="kv_gesetzlich">Gesetzlich</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="kv_type" id="kv_privat" value="privat" onchange="toggleKV()">
+              <label class="form-check-label" for="kv_privat">PKV</label>
+            </div>
+          </div>
+          <div id="gkv_fields">
+            <div class="input-group input-group-sm mb-1">
+              <span class="input-group-text">Zusatzbeitrag</span>
+              <input type="number" class="form-control" id="gkv_zusatzbeitrag" value="1.7" step="0.1" min="0" max="5">
+              <span class="input-group-text">%</span>
+            </div>
+          </div>
+          <div id="pkv_fields" style="display:none">
+            <div class="row g-1 mb-1">
+              <div class="col-6">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">PKV</span>
+                  <input type="number" class="form-control" id="pkv_amount" value="0" min="0">
+                  <span class="input-group-text">€</span>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">PV</span>
+                  <input type="number" class="form-control" id="pkv_pv_amount" value="0" min="0">
+                  <span class="input-group-text">€</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row g-2 mt-1">
+            <div class="col-6">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="has_children" checked>
+                <label class="form-check-label" for="has_children">Kinder (PV-Satz)</label>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="married">
+                <label class="form-check-label" for="married">Verheiratet / Splitting</label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== Person 2 ===== -->
+        <div class="tab-pane fade" id="tabP2">
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="two_persons" onchange="toggleP2()">
+            <label class="form-check-label" for="two_persons"><strong>Zweite Person hinzufügen</strong></label>
+          </div>
+          <div id="p2_fields" style="display:none">
+            <div class="section-label">Persönliche Daten</div>
+            <div class="row g-2 mb-1">
+              <div class="col-6">
+                <label class="form-label">Geburtsjahr</label>
+                <input type="number" class="form-control form-control-sm" id="p2_birth_year" value="1965" min="1940" max="1985">
+              </div>
+              <div class="col-6">
+                <label class="form-label">Geburtsmonat</label>
+                <input type="number" class="form-control form-control-sm" id="p2_birth_month" value="1" min="1" max="12">
+              </div>
+            </div>
+            <div class="row g-2 mb-1">
+              <div class="col-7">
+                <label class="form-label">Rentenalter</label>
+                <div class="input-group input-group-sm">
+                  <input type="number" class="form-control" id="p2_pension_age" value="67" min="60" max="70" step="0.5">
+                  <span class="input-group-text">Jahre</span>
+                </div>
+              </div>
+            </div>
+            <div class="section-label">Gesetzliche Rente (brutto bei 67)</div>
+            <div class="input-group input-group-sm mb-1">
+              <input type="number" class="form-control" id="p2_gesetzliche_rente" value="0" min="0">
+              <span class="input-group-text">€/Monat</span>
+            </div>
+            <div class="section-label">Betriebsrente (brutto)</div>
+            <div class="input-group input-group-sm mb-1">
+              <input type="number" class="form-control" id="p2_betriebsrente" value="0" min="0">
+              <span class="input-group-text">€/Monat</span>
+            </div>
+            <div class="section-label">Private Krankenversicherung (Person 2)</div>
+            <div class="row g-1 mb-2">
+              <div class="col-6">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">PKV</span>
+                  <input type="number" class="form-control" id="p2_pkv_amount" value="0" min="0">
+                  <span class="input-group-text">€</span>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">PV</span>
+                  <input type="number" class="form-control" id="p2_pkv_pv_amount" value="0" min="0">
+                  <span class="input-group-text">€</span>
+                </div>
+              </div>
+            </div>
+            <div class="section-label">Private Rentenversicherungen</div>
+            <div class="rv-block">
+              <small>RV 1</small>
+              <div class="row g-1 mt-1">
+                <div class="col-5"><input type="number" class="form-control form-control-sm" id="p2_rv1_amount" value="0" min="0" placeholder="€/Monat"></div>
+                <div class="col-4"><div class="input-group input-group-sm"><input type="number" class="form-control" id="p2_rv1_tax_pct" value="18" min="0" max="100"><span class="input-group-text">%</span></div></div>
+                <div class="col-3"><input type="number" class="form-control form-control-sm" id="p2_rv1_start_age" value="67" min="55" max="80"></div>
+              </div>
+            </div>
+            <div class="rv-block">
+              <small>RV 2</small>
+              <div class="row g-1 mt-1">
+                <div class="col-5"><input type="number" class="form-control form-control-sm" id="p2_rv2_amount" value="0" min="0" placeholder="€/Monat"></div>
+                <div class="col-4"><div class="input-group input-group-sm"><input type="number" class="form-control" id="p2_rv2_tax_pct" value="18" min="0" max="100"><span class="input-group-text">%</span></div></div>
+                <div class="col-3"><input type="number" class="form-control form-control-sm" id="p2_rv2_start_age" value="67" min="55" max="80"></div>
+              </div>
+            </div>
+            <div class="rv-block">
+              <small>RV 3</small>
+              <div class="row g-1 mt-1">
+                <div class="col-5"><input type="number" class="form-control form-control-sm" id="p2_rv3_amount" value="0" min="0" placeholder="€/Monat"></div>
+                <div class="col-4"><div class="input-group input-group-sm"><input type="number" class="form-control" id="p2_rv3_tax_pct" value="18" min="0" max="100"><span class="input-group-text">%</span></div></div>
+                <div class="col-3"><input type="number" class="form-control form-control-sm" id="p2_rv3_start_age" value="67" min="55" max="80"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== Kapital ===== -->
+        <div class="tab-pane fade" id="tabKapital">
+          <div class="section-label">Kapitalstock (aktuell)</div>
+          <div class="input-group input-group-sm mb-1">
+            <input type="number" class="form-control" id="capital_start" value="200000" min="0" step="1000">
+            <span class="input-group-text">€</span>
+          </div>
+          <div class="section-label">Rendite p.a.</div>
+          <div class="input-group input-group-sm mb-1">
+            <input type="number" class="form-control" id="capital_return_pct" value="3" min="0" max="15" step="0.25">
+            <span class="input-group-text">%</span>
+          </div>
+          <div class="section-label">Monatliche Kapitalentnahme (brutto vor Steuer)</div>
+          <div class="input-group input-group-sm mb-1">
+            <input type="number" class="form-control" id="capital_drawdown_fixed" value="500" min="0" step="50">
+            <span class="input-group-text">€/Monat brutto</span>
+          </div>
+          <div class="alert alert-info p-2 small mb-1">
+            <i class="bi bi-percent"></i> 25 % Abgeltungssteuer wird automatisch auf alle Kapitalentnahmen angerechnet.
+          </div>
+          <div class="section-label">Sockelbetrag (Mindestkapital)</div>
+          <div class="row g-2 mb-1">
+            <div class="col-7">
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control" id="capital_floor" value="50000" min="0" step="1000">
+                <span class="input-group-text">€</span>
+              </div>
+            </div>
+            <div class="col-5">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">ab&nbsp;Alter</span>
+                <input type="number" class="form-control" id="capital_floor_age" value="85" min="70" max="100">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== Vorruhestand ===== -->
+        <div class="tab-pane fade" id="tabVorruhe">
+          <div class="section-label">Abfindung (gestreckt)</div>
+          <div class="row g-2 mb-2">
+            <div class="col-12">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">Betrag</span>
+                <input type="number" class="form-control" id="abfindung_monthly" value="0" min="0">
+                <span class="input-group-text">€/Monat</span>
+              </div>
+            </div>
+            <div class="col-6">
+              <label class="form-label mb-0">Von</label>
+              <input type="month" class="form-control form-control-sm" id="abfindung_start">
+            </div>
+            <div class="col-6">
+              <label class="form-label mb-0">Bis</label>
+              <input type="month" class="form-control form-control-sm" id="abfindung_end">
+            </div>
+          </div>
+          <div class="section-label">Arbeitslosengeld (ALG I)</div>
+          <div class="row g-2 mb-2">
+            <div class="col-12">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">Betrag</span>
+                <input type="number" class="form-control" id="alg_monthly" value="0" min="0">
+                <span class="input-group-text">€/Monat</span>
+              </div>
+            </div>
+            <div class="col-6">
+              <label class="form-label mb-0">Von</label>
+              <input type="month" class="form-control form-control-sm" id="alg_start">
+            </div>
+            <div class="col-6">
+              <label class="form-label mb-0">Bis</label>
+              <input type="month" class="form-control form-control-sm" id="alg_end">
+            </div>
+          </div>
+          <div class="alert alert-warning p-2 small">
+            <i class="bi bi-exclamation-triangle"></i> ALG I ist steuerfrei, unterliegt aber dem <strong>Progressionsvorbehalt</strong>.
+          </div>
+        </div>
+
+        <!-- ===== Sonstiges ===== -->
+        <div class="tab-pane fade" id="tabSonstiges">
+          <div class="section-label">Simulation bis Alter (Person 1)</div>
+          <div class="input-group input-group-sm mb-2">
+            <input type="number" class="form-control" id="age_end" value="95" min="70" max="100">
+            <span class="input-group-text">Jahre</span>
+          </div>
+          <div class="section-label">Mindestnetto-Ziel (Sonderkapitalentnahme)</div>
+          <div class="input-group input-group-sm mb-1">
+            <input type="number" class="form-control" id="net_target" value="6000" min="0" step="100">
+            <span class="input-group-text">€/Monat netto</span>
+          </div>
+          <div class="text-muted small mb-3">Wenn das verfügbare Netto unter diesen Betrag fällt, wird automatisch Kapital entnommen (inkl. 25 % Abgeltungssteuer). 0 = deaktiviert.</div>
+          <hr>
+          <div class="section-label">Szenario-Vergleich</div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label">Szenario A</label>
+              <select class="form-select form-select-sm" id="compare_a">
+                <option value="">— wählen —</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Szenario B</label>
+              <select class="form-select form-select-sm" id="compare_b">
+                <option value="">— wählen —</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <button class="btn btn-sm btn-secondary w-100" onclick="runCompare()">
+                <i class="bi bi-arrows-angle-expand"></i> Szenarien vergleichen
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- tab-content -->
+
+      <div class="mt-3 d-grid">
+        <button class="btn btn-primary" onclick="runCalculation()">
+          <i class="bi bi-calculator"></i> Berechnen
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- RIGHT: Results -->
+<div class="col-lg-7 col-xl-8">
+
+  <!-- Chart card -->
+  <div class="card mb-3" id="chartCard" style="display:none">
+    <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+      <span class="fw-bold"><i class="bi bi-graph-up me-1"></i>Einkommensverlauf bis Alter <span id="chartAgeLabel">95</span></span>
+      <div class="d-flex gap-2 align-items-center">
+        <label class="mb-0 small text-muted">Schwelle:</label>
+        <div class="input-group input-group-sm" style="width:140px">
+          <input type="number" class="form-control form-control-sm" id="chart_threshold" value="6000" step="100" min="0" oninput="updateChartThreshold()">
+          <span class="input-group-text">€</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body p-2">
+      <canvas id="incomeChart" height="120"></canvas>
+    </div>
+  </div>
+
+  <!-- Summary card -->
+  <div class="card mb-3" id="summaryCard" style="display:none">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <span class="fw-bold"><i class="bi bi-table me-1"></i>Übersicht</span>
+      <span id="metaInfo" class="text-muted small"></span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered summary-table mb-0">
+          <thead class="table-dark">
+            <tr>
+              <th></th>
+              <th>Jetzt</th>
+              <th>63</th>
+              <th>65</th>
+              <th>67</th>
+              <th>70</th>
+              <th>75</th>
+              <th>80</th>
+            </tr>
+          </thead>
+          <tbody id="summaryBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compare card -->
+  <div class="card mb-3" id="compareCard" style="display:none">
+    <div class="card-header py-2 fw-bold"><i class="bi bi-columns-gap me-1"></i>Szenario-Vergleich</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered summary-table mb-0" id="compareTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Annual capital card -->
+  <div class="card mb-3" id="annualCard" style="display:none">
+    <div class="card-header py-2 fw-bold"><i class="bi bi-bank me-1"></i>Kapitalentwicklung (jährlich)</div>
+    <div class="card-body p-0" style="max-height:320px; overflow-y:auto">
+      <table class="table table-sm table-hover annual-table mb-0">
+        <thead>
+          <tr>
+            <th>Jahr</th>
+            <th>Startkapital</th>
+            <th>Rendite</th>
+            <th>Reg. Entnahme (brutto)</th>
+            <th>Sonderentnahme (brutto)</th>
+            <th>Ges. Entnahme netto</th>
+            <th>Abgeltungssteuer</th>
+            <th>Endkapital</th>
+          </tr>
+        </thead>
+        <tbody id="annualBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Monthly table card -->
+  <div class="card" id="monthlyCard" style="display:none">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <span class="fw-bold"><i class="bi bi-list-ol me-1"></i>Monatliche Planung</span>
+      <div class="d-flex gap-2 align-items-center">
+        <select class="form-select form-select-sm" id="filterYear" style="width:auto" onchange="filterTable()">
+          <option value="">Alle Jahre</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="exportCSV()">
+          <i class="bi bi-download"></i> CSV
+        </button>
+      </div>
+    </div>
+    <div class="card-body p-0" style="max-height: 55vh; overflow-y: auto;">
+      <table class="table table-sm table-hover monthly-table mb-0">
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Alter P1</th>
+            <th>Ges.Rente</th>
+            <th>Betriebs&shy;rente</th>
+            <th>RV P1</th>
+            <th>P2 Renten</th>
+            <th>P2 RV</th>
+            <th>Abfind.</th>
+            <th>ALG</th>
+            <th>Kap.&shy;entnahme&nbsp;netto</th>
+            <th class="table-warning">Sonder&shy;entnahme&nbsp;netto</th>
+            <th class="table-success">Brutto</th>
+            <th class="table-danger">Steuer</th>
+            <th class="table-warning">KV</th>
+            <th class="table-warning">PV</th>
+            <th class="table-primary fw-bold">Netto</th>
+            <th>Kapital&shy;stand</th>
+          </tr>
+        </thead>
+        <tbody id="monthlyBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- right col -->
+</div><!-- row -->
+</div><!-- container -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// -----------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------
+let currentScenarioId = null;
+let allMonthlyRows = [];
+let allAnnualRows = [];
+let allScenarios = [];
+let incomeChart = null;
+
+// -----------------------------------------------------------------------
+// Toast
+// -----------------------------------------------------------------------
+function showToast(msg, type = 'success') {
+  const id = 'toast_' + Date.now();
+  document.getElementById('toastContainer').insertAdjacentHTML('beforeend',
+    `<div id="${id}" class="toast align-items-center text-bg-${type} border-0 show mb-2" role="alert">
+      <div class="d-flex"><div class="toast-body">${msg}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="document.getElementById('${id}').remove()"></button>
+      </div></div>`);
+  setTimeout(() => { const el = document.getElementById(id); if (el) el.remove(); }, 3500);
+}
+
+// -----------------------------------------------------------------------
+// Params
+// -----------------------------------------------------------------------
+function collectParams() {
+  const g = id => {
+    const el = document.getElementById(id);
+    if (!el) return '';
+    if (el.type === 'checkbox') return el.checked;
+    return el.value;
+  };
+  return {
+    p1_birth_year: +g('p1_birth_year'), p1_birth_month: +g('p1_birth_month'),
+    p1_pension_age: +g('p1_pension_age'),
+    p1_abschlagsfrei: g('p1_abschlagsfrei'), p1_beitragsjahre: +g('p1_beitragsjahre'),
+    p1_gesetzliche_rente: +g('p1_gesetzliche_rente'), p1_betriebsrente: +g('p1_betriebsrente'),
+    p1_rv1_amount: +g('p1_rv1_amount'), p1_rv1_tax_pct: +g('p1_rv1_tax_pct'), p1_rv1_start_age: +g('p1_rv1_start_age'),
+    p1_rv2_amount: +g('p1_rv2_amount'), p1_rv2_tax_pct: +g('p1_rv2_tax_pct'), p1_rv2_start_age: +g('p1_rv2_start_age'),
+    p1_rv3_amount: +g('p1_rv3_amount'), p1_rv3_tax_pct: +g('p1_rv3_tax_pct'), p1_rv3_start_age: +g('p1_rv3_start_age'),
+    two_persons: g('two_persons'),
+    p2_birth_year: +g('p2_birth_year'), p2_birth_month: +g('p2_birth_month'),
+    p2_pension_age: +g('p2_pension_age'),
+    p2_gesetzliche_rente: +g('p2_gesetzliche_rente'), p2_betriebsrente: +g('p2_betriebsrente'),
+    p2_rv1_amount: +g('p2_rv1_amount'), p2_rv1_tax_pct: +g('p2_rv1_tax_pct'), p2_rv1_start_age: +g('p2_rv1_start_age'),
+    p2_rv2_amount: +g('p2_rv2_amount'), p2_rv2_tax_pct: +g('p2_rv2_tax_pct'), p2_rv2_start_age: +g('p2_rv2_start_age'),
+    p2_rv3_amount: +g('p2_rv3_amount'), p2_rv3_tax_pct: +g('p2_rv3_tax_pct'), p2_rv3_start_age: +g('p2_rv3_start_age'),
+    p2_pkv_amount: +g('p2_pkv_amount'), p2_pkv_pv_amount: +g('p2_pkv_pv_amount'),
+    kv_type: document.querySelector('input[name="kv_type"]:checked')?.value || 'gesetzlich',
+    gkv_zusatzbeitrag: +g('gkv_zusatzbeitrag'),
+    pkv_amount: +g('pkv_amount'), pkv_pv_amount: +g('pkv_pv_amount'),
+    has_children: g('has_children'), married: g('married'),
+    capital_start: +g('capital_start'), capital_return_pct: +g('capital_return_pct'),
+    capital_floor: +g('capital_floor'), capital_floor_age: +g('capital_floor_age'),
+    capital_drawdown_mode: 'fixed', capital_drawdown_fixed: +g('capital_drawdown_fixed'),
+    abfindung_monthly: +g('abfindung_monthly'), abfindung_start: g('abfindung_start'), abfindung_end: g('abfindung_end'),
+    alg_monthly: +g('alg_monthly'), alg_start: g('alg_start'), alg_end: g('alg_end'),
+    age_end: +g('age_end'), net_target: +g('net_target'),
+  };
+}
+
+function fillParams(params) {
+  const s = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') { el.checked = !!val; return; }
+    el.value = val ?? '';
+  };
+  Object.entries(params).forEach(([k, v]) => s(k, v));
+  if (params.kv_type) {
+    const el = document.getElementById('kv_' + params.kv_type);
+    if (el) el.checked = true;
+  }
+  toggleKV(); toggleP2(); updateAbschlagInfo();
+}
+
+// -----------------------------------------------------------------------
+// UI helpers
+// -----------------------------------------------------------------------
+function toggleKV() {
+  const gesetzlich = document.getElementById('kv_gesetzlich').checked;
+  document.getElementById('gkv_fields').style.display = gesetzlich ? '' : 'none';
+  document.getElementById('pkv_fields').style.display = gesetzlich ? 'none' : '';
+}
+function toggleP2() {
+  document.getElementById('p2_fields').style.display =
+    document.getElementById('two_persons').checked ? '' : 'none';
+}
+
+function updateAbschlagInfo() {
+  const age = parseFloat(document.getElementById('p1_pension_age').value) || 67;
+  const abschlagsfrei = document.getElementById('p1_abschlagsfrei').checked;
+  const beitragsjahre = parseFloat(document.getElementById('p1_beitragsjahre').value) || 45;
+  const infoEl = document.getElementById('p1_abschlag_info');
+  const afInfoEl = document.getElementById('p1_abschlagsfrei_info');
+
+  if (abschlagsfrei && age < 67) {
+    const missing = 67 - age;
+    const factor = beitragsjahre / (beitragsjahre + missing);
+    const minderung = (1 - factor) * 100;
+    infoEl.textContent = '';
+    afInfoEl.textContent = `Minderung: ${minderung.toFixed(1)} % (${beitragsjahre}/${(beitragsjahre+missing).toFixed(1)} EP-Jahre)`;
+  } else {
+    afInfoEl.textContent = '';
+    const monthsEarly = Math.max(0, (67 - age) * 12);
+    const abschlag = Math.min(monthsEarly * 0.3, 14.4);
+    infoEl.textContent = abschlag > 0 ? `Abschlag: ${abschlag.toFixed(1)} %` : '';
+  }
+}
+
+// -----------------------------------------------------------------------
+// Format
+// -----------------------------------------------------------------------
+const fmt  = n => n == null ? '—' : n.toLocaleString('de-DE', {minimumFractionDigits:0, maximumFractionDigits:0}) + ' €';
+const fmtN = n => n == null ? '—' : n.toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtT = n => n == null ? '—' : (n/1000).toLocaleString('de-DE', {minimumFractionDigits:1, maximumFractionDigits:1}) + ' T€';
+
+// -----------------------------------------------------------------------
+// Chart
+// -----------------------------------------------------------------------
+function renderChart(rows) {
+  const threshold = parseFloat(document.getElementById('chart_threshold').value) || 0;
+  document.getElementById('chartAgeLabel').textContent = document.getElementById('age_end').value || '95';
+  const sampled = rows.filter((_, i) => i % 3 === 0);
+  const labels   = sampled.map(r => r.date);
+  const netData  = sampled.map(r => r.net);
+  const capData  = sampled.map(r => r.capital / 1000);
+  const drawData = sampled.map(r => (r.capital_drawdown_net||0) + (r.sonder_entnahme||0));
+
+  const ctx = document.getElementById('incomeChart').getContext('2d');
+  if (incomeChart) incomeChart.destroy();
+  incomeChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Netto-Einkommen (€/Mon.)',
+          data: netData,
+          borderColor: '#0d6efd', backgroundColor: 'rgba(13,110,253,0.07)',
+          fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2, yAxisID: 'yNet',
+        },
+        ...(threshold > 0 ? [{
+          label: `Schwelle ${threshold.toLocaleString('de-DE')} €`,
+          data: sampled.map(() => threshold),
+          borderColor: '#dc3545', borderDash: [6,3], borderWidth: 2,
+          pointRadius: 0, fill: false, yAxisID: 'yNet',
+        }] : []),
+        {
+          label: 'Kapitalentnahmen gesamt (netto)',
+          data: drawData,
+          borderColor: '#fd7e14', backgroundColor: 'rgba(253,126,20,0.07)',
+          fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+          borderDash: [4,2], yAxisID: 'yNet',
+        },
+        {
+          label: 'Kapital (T€)',
+          data: capData,
+          borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.05)',
+          fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+          borderDash: [2,2], yAxisID: 'yCap',
+        },
+      ]
+    },
+    options: {
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              const unit = ctx.dataset.yAxisID === 'yCap' ? ' T€' : ' €';
+              return ` ${ctx.dataset.label}: ${v.toLocaleString('de-DE', {maximumFractionDigits:0})}${unit}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 18, font:{size:10} }, grid: { display:false } },
+        yNet: {
+          type:'linear', position:'left',
+          title: { display:true, text:'Netto €/Mon.', font:{size:10} },
+          ticks: { font:{size:10}, callback: v => v.toLocaleString('de-DE')+'€' },
+          grid: { color:'rgba(0,0,0,0.05)' }
+        },
+        yCap: {
+          type:'linear', position:'right',
+          title: { display:true, text:'Kapital T€', font:{size:10} },
+          ticks: { font:{size:10}, callback: v => v.toLocaleString('de-DE')+'T€' },
+          grid: { display:false }
+        }
+      }
+    }
+  });
+  document.getElementById('chartCard').style.display = '';
+}
+
+function updateChartThreshold() {
+  if (!allMonthlyRows.length) return;
+  document.getElementById('net_target').value = document.getElementById('chart_threshold').value;
+  renderChart(allMonthlyRows);
+  filterTable();
+}
+
+// -----------------------------------------------------------------------
+// Summary
+// -----------------------------------------------------------------------
+function renderSummary(result) {
+  const s = result.summary;
+  const meta = result.meta || {};
+  const labels = ['jetzt','63','65','67','70','75','80'];
+  const labelNames = ['Jetzt','63','65','67','70','75','80'];
+
+  let metaHtml = `Renteneintritt: <strong>${meta.p1_pension_date||'—'}</strong> &nbsp;|&nbsp; `;
+  if (meta.p1_abschlagsfrei && meta.p1_abschlagsfrei_info) {
+    metaHtml += `<span class="text-info">${meta.p1_abschlagsfrei_info}</span>`;
+  } else {
+    metaHtml += `Abschlag: <strong>${meta.p1_abschlag_pct||0} %</strong>`;
+  }
+  metaHtml += ` &nbsp;|&nbsp; Rentenanteil stpfl.: <strong>${meta.p1_renten_stpfl_anteil_pct||0} %</strong>`;
+  metaHtml += ` &nbsp;|&nbsp; Rentenfaktor: <strong>${meta.p1_rente_faktor||100} %</strong>`;
+  document.getElementById('metaInfo').innerHTML = metaHtml;
+
+  const rows = [
+    { label: 'Netto (€/Mon.)', cls: 'table-primary fw-bold', fn: l => fmt(s[l]?.net) },
+    { label: 'Kapital', cls: '', fn: l => fmtT(s[l]?.capital) },
+  ];
+  document.getElementById('summaryBody').innerHTML = rows.map(r =>
+    `<tr class="${r.cls}"><td>${r.label}</td>${labels.map(l => `<td>${r.fn(l)}</td>`).join('')}</tr>`
+  ).join('');
+  document.getElementById('summaryCard').style.display = '';
+}
+
+// -----------------------------------------------------------------------
+// Annual capital table
+// -----------------------------------------------------------------------
+function renderAnnual(rows) {
+  allAnnualRows = rows;
+  const tbody = document.getElementById('annualBody');
+  tbody.innerHTML = rows.map(r => {
+    const capChange = r.end_capital - r.start_capital;
+    const capClass = capChange >= 0 ? 'text-success' : 'text-danger';
+    return `<tr>
+      <td class="fw-bold">${r.year}</td>
+      <td>${fmt(r.start_capital)}</td>
+      <td class="text-success">${fmt(r.return_sum)}</td>
+      <td>${fmt(r.regular_drawdown_gross)}</td>
+      <td class="${r.sonder_drawdown_gross > 0 ? 'text-danger fw-semibold' : ''}">${r.sonder_drawdown_gross > 0 ? fmt(r.sonder_drawdown_gross) : '—'}</td>
+      <td>${fmt(r.total_drawdown_net)}</td>
+      <td class="text-muted">${fmt(r.total_drawdown_tax)}</td>
+      <td class="${capClass} fw-bold">${fmt(r.end_capital)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('annualCard').style.display = '';
+}
+
+// -----------------------------------------------------------------------
+// Monthly table
+// -----------------------------------------------------------------------
+function renderMonthly(rows) {
+  allMonthlyRows = rows;
+  const years = [...new Set(rows.map(r => r.date.slice(0,4)))];
+  const sel = document.getElementById('filterYear');
+  sel.innerHTML = '<option value="">Alle Jahre</option>' +
+    years.map(y => `<option value="${y}">${y}</option>`).join('');
+  renderMonthlyFiltered(rows);
+  document.getElementById('monthlyCard').style.display = '';
+}
+
+function filterTable() {
+  const yr = document.getElementById('filterYear').value;
+  renderMonthlyFiltered(yr ? allMonthlyRows.filter(r => r.date.startsWith(yr)) : allMonthlyRows);
+}
+
+function renderMonthlyFiltered(rows) {
+  const threshold = parseFloat(document.getElementById('net_target').value) || 0;
+  const html = rows.map(r => {
+    const p2Renten = (r.p2_rente||0) + (r.p2_betriebsrente||0);
+    const p2rv = r.p2_rv||0;
+    const sonder = r.sonder_entnahme || 0;
+    const belowThreshold = threshold > 0 && r.net < threshold - 0.5;
+    const rowClass = belowThreshold ? ' style="background:rgba(220,53,69,.07)"' : '';
+    return `<tr${rowClass}>
+      <td>${r.date}</td>
+      <td>${r.p1_age}</td>
+      <td>${fmtN(r.p1_rente)}</td>
+      <td>${fmtN(r.p1_betriebsrente)}</td>
+      <td>${fmtN(r.p1_rv||0)}</td>
+      <td>${fmtN(p2Renten)}</td>
+      <td>${fmtN(p2rv)}</td>
+      <td>${fmtN(r.abfindung)}</td>
+      <td>${fmtN(r.alg)}</td>
+      <td>${fmtN(r.capital_drawdown_net||0)}</td>
+      <td class="${sonder>0?'table-warning fw-semibold':''}">${sonder>0?fmtN(sonder):'—'}</td>
+      <td class="table-success fw-semibold">${fmtN(r.total_gross)}</td>
+      <td class="table-danger">${fmtN(r.tax)}</td>
+      <td class="table-warning">${fmtN(r.kv)}</td>
+      <td class="table-warning">${fmtN(r.pv)}</td>
+      <td class="table-primary fw-bold">${fmtN(r.net)}</td>
+      <td>${r.capital>=1000?fmtT(r.capital):fmtN(r.capital)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('monthlyBody').innerHTML = html;
+}
+
+// -----------------------------------------------------------------------
+// Main calculation
+// -----------------------------------------------------------------------
+async function runCalculation() {
+  const params = collectParams();
+  document.getElementById('chart_threshold').value = params.net_target || 6000;
+  try {
+    const res = await fetch('/api/calculate', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(params)
+    });
+    const result = await res.json();
+    renderSummary(result);
+    renderChart(result.monthly);
+    renderAnnual(result.annual || []);
+    renderMonthly(result.monthly);
+    document.getElementById('compareCard').style.display = 'none';
+  } catch(e) {
+    showToast('Fehler: ' + e.message, 'danger');
+  }
+}
+
+// -----------------------------------------------------------------------
+// Compare
+// -----------------------------------------------------------------------
+async function runCompare() {
+  const a = document.getElementById('compare_a').value;
+  const b = document.getElementById('compare_b').value;
+  if (!a || !b) { showToast('Bitte zwei Szenarien wählen', 'warning'); return; }
+  const res = await fetch('/api/compare', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids:[+a,+b]})
+  });
+  const results = await res.json();
+  if (results.length < 2) { showToast('Nicht genug Szenarien', 'warning'); return; }
+  const [rA, rB] = results;
+  const sA = rA.summary, sB = rB.summary;
+  const labels = ['jetzt','63','65','67','70','75','80'];
+  let html = `<thead class="table-dark"><tr><th></th>`;
+  labels.forEach(l => html += `<th colspan="2">${l==='jetzt'?'Jetzt':l}</th>`);
+  html += `</tr><tr><th></th>`;
+  labels.forEach(() => html += `<th style="background:#e8f4fd">${rA.name}</th><th style="background:#fef9e7">${rB.name}</th>`);
+  html += `</tr></thead><tbody>`;
+  html += `<tr class="fw-bold"><td>Netto €/Mon.</td>`;
+  labels.forEach(l => html += `<td style="background:#e8f4fd">${fmt(sA[l]?.net)}</td><td style="background:#fef9e7">${fmt(sB[l]?.net)}</td>`);
+  html += `</tr><tr><td>Kapital</td>`;
+  labels.forEach(l => html += `<td style="background:#e8f4fd">${fmtT(sA[l]?.capital)}</td><td style="background:#fef9e7">${fmtT(sB[l]?.capital)}</td>`);
+  html += `</tr></tbody>`;
+  document.getElementById('compareTable').innerHTML = html;
+  document.getElementById('compareCard').style.display = '';
+}
+
+// -----------------------------------------------------------------------
+// Scenarios
+// -----------------------------------------------------------------------
+async function loadScenarioList() {
+  const res = await fetch('/api/scenarios');
+  allScenarios = await res.json();
+  const opts = allScenarios.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  const empty = '<option value="">— Szenario wählen —</option>';
+  ['scenarioSelect','compare_a','compare_b'].forEach(id => {
+    document.getElementById(id).innerHTML = (id === 'scenarioSelect' ? empty : '<option value="">— wählen —</option>') + opts;
+  });
+  if (currentScenarioId) document.getElementById('scenarioSelect').value = currentScenarioId;
+}
+
+async function loadScenario() {
+  const id = +document.getElementById('scenarioSelect').value;
+  if (!id) { showToast('Bitte erst ein Szenario aus der Liste wählen', 'warning'); return; }
+  const res = await fetch(`/api/scenarios/${id}`);
+  const s = await res.json();
+  currentScenarioId = id;
+  fillParams(s.params);
+  showToast(`"${s.name}" geladen`);
+}
+
+async function saveScenario() {
+  const defaultName = allScenarios.find(s => s.id === currentScenarioId)?.name || 'Neues Szenario';
+  const name = prompt('Szenario-Name:', defaultName);
+  if (!name) return;
+  const params = collectParams();
+  if (currentScenarioId) {
+    await fetch(`/api/scenarios/${currentScenarioId}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, params})
+    });
+    showToast('Gespeichert');
+  } else {
+    const res = await fetch('/api/scenarios', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, params})
+    });
+    currentScenarioId = (await res.json()).id;
+    showToast('Neues Szenario gespeichert');
+  }
+  await loadScenarioList();
+}
+
+function newScenario() {
+  currentScenarioId = null;
+  document.getElementById('scenarioSelect').value = '';
+  showToast('Eingaben für neues Szenario bereit', 'info');
+}
+
+async function deleteScenario() {
+  if (!currentScenarioId) { showToast('Kein Szenario ausgewählt', 'warning'); return; }
+  if (!confirm('Szenario wirklich löschen?')) return;
+  await fetch(`/api/scenarios/${currentScenarioId}`, {method:'DELETE'});
+  currentScenarioId = null;
+  showToast('Gelöscht', 'warning');
+  await loadScenarioList();
+}
+
+// -----------------------------------------------------------------------
+// CSV export
+// -----------------------------------------------------------------------
+function exportCSV() {
+  if (!allMonthlyRows.length) return;
+  const header = ['Datum','Alter P1','Ges.Rente','Betriebsrente','RV P1','P2 Renten','P2 RV',
+    'Abfindung','ALG','KapEntnahme netto','Sonderentnahme netto','Brutto','Steuer','KV','PV','Netto','Kapitalstand'];
+  const rows = allMonthlyRows.map(r =>
+    [r.date, r.p1_age, r.p1_rente, r.p1_betriebsrente, r.p1_rv||0,
+     (r.p2_rente||0)+(r.p2_betriebsrente||0), r.p2_rv||0,
+     r.abfindung, r.alg, r.capital_drawdown_net||0, r.sonder_entnahme||0,
+     r.total_gross, r.tax, r.kv, r.pv, r.net, r.capital]
+    .map(v => String(v).replace('.',',')).join(';')
+  );
+  const csv = [header.join(';'),...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv);
+  a.download = 'rentensimulation.csv';
+  a.click();
+}
+
+// -----------------------------------------------------------------------
+// Init
+// -----------------------------------------------------------------------
+loadScenarioList();
+updateAbschlagInfo();
+</script>
+</body>
+</html>
