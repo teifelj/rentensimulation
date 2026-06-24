@@ -198,13 +198,27 @@ def calculate_pension_plan(params: dict) -> dict:
         missing_years = p1_regalter - p1_pension_age
         factor_p1 = p1_beitragsjahre / (p1_beitragsjahre + missing_years)
         abschlag_p1 = 0.0
+        abschlag_auto_p1 = 0.0
     else:
         months_early_p1 = max(0, (p1_regalter - p1_pension_age) * 12)
-        abschlag_p1 = min(months_early_p1 * ABSCHLAG_PER_MONTH, 0.144)
+        abschlag_auto_p1 = min(months_early_p1 * ABSCHLAG_PER_MONTH, 0.144)
+        # User can override Abschlag (e.g. compensated by voluntary contributions)
+        abschlag_custom = params.get("p1_abschlag_custom_pct", None)
+        if abschlag_custom is not None and str(abschlag_custom).strip() != "":
+            abschlag_p1 = max(0.0, min(float(abschlag_custom) / 100, 0.144))
+        else:
+            abschlag_p1 = abschlag_auto_p1
         factor_p1 = 1 - abschlag_p1
 
     p1_gesetzliche_rente = float(params.get("p1_gesetzliche_rente", 0)) * factor_p1
+
+    # Betriebsrente mit eigenem Startdatum (unabhängig vom Rentenbeginn)
     p1_betriebsrente = float(params.get("p1_betriebsrente", 0))
+    _br_start_ym = params.get("p1_betriebsrente_start", "")
+    if _br_start_ym:
+        p1_betriebsrente_start = _date_from_ym(_br_start_ym)
+    else:
+        p1_betriebsrente_start = p1_pension_date  # fallback: wie Rentenbeginn
 
     # Private Rentenversicherungen person 1
     p1_rvs = []
@@ -309,7 +323,7 @@ def calculate_pension_plan(params: dict) -> dict:
 
         # --- Income ---
         p1_rente = p1_gesetzliche_rente if p1_retired else 0.0
-        p1_br = p1_betriebsrente if p1_retired else 0.0
+        p1_br = p1_betriebsrente if cur >= p1_betriebsrente_start else 0.0
         p1_rv_income = sum(rv["amount"] for rv in p1_rvs if cur >= rv["start_date"])
 
         p2_rente = p2_gesetzliche_rente if p2_retired else 0.0
@@ -540,6 +554,7 @@ def calculate_pension_plan(params: dict) -> dict:
         "meta": {
             "p1_pension_date": p1_pension_date.strftime("%Y-%m"),
             "p1_abschlag_pct": round(abschlag_p1 * 100, 2),
+            "p1_abschlag_auto_pct": round(abschlag_auto_p1 * 100, 2),
             "p1_renten_stpfl_anteil_pct": round(p1_renten_stpfl_anteil * 100, 1),
             "p1_abschlagsfrei": p1_abschlagsfrei,
             "p1_abschlagsfrei_info": p1_abschlagsfrei_info,

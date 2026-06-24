@@ -86,23 +86,42 @@
             </div>
           </div>
 
-          <!-- Abschlagsfreie Rente -->
+          <!-- Abschlag / abschlagsfreie Rente -->
           <div class="border rounded p-2 mb-2 bg-light">
+            <div class="row g-1 mb-1">
+              <div class="col-7">
+                <label class="form-label mb-0" style="font-size:.75rem">
+                  Effektiver Abschlag
+                  <span class="text-muted" style="font-weight:400">(leer = auto)</span>
+                </label>
+                <div class="input-group input-group-sm">
+                  <input type="number" class="form-control" id="p1_abschlag_custom_pct"
+                         placeholder="auto" min="0" max="14.4" step="0.1" oninput="updateAbschlagInfo()">
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+              <div class="col-5 d-flex align-items-end">
+                <div>
+                  <div style="font-size:.7rem;color:#6c757d">Berechnet:</div>
+                  <span id="p1_abschlag_auto_display" class="text-danger fw-bold small"></span>
+                </div>
+              </div>
+            </div>
+            <div class="text-muted" style="font-size:.72rem">Frühzeitige Abschläge können durch freiwillige Einzahlungen ausgeglichen werden.</div>
+            <hr class="my-2">
             <div class="form-check mb-1">
               <input class="form-check-input" type="checkbox" id="p1_abschlagsfrei" onchange="updateAbschlagInfo()">
-              <label class="form-check-label fw-bold" for="p1_abschlagsfrei">
+              <label class="form-check-label fw-bold" for="p1_abschlagsfrei" style="font-size:.85rem">
                 Abschlagsfreie Rente (bes. langjährig Versicherte)
               </label>
             </div>
-            <div id="p1_abschlagsfrei_fields">
-              <div class="row g-1">
-                <div class="col-6">
-                  <label class="form-label mb-0" style="font-size:.75rem">Beitragsjahre</label>
-                  <input type="number" class="form-control form-control-sm" id="p1_beitragsjahre" value="45" min="30" max="50" oninput="updateAbschlagInfo()">
-                </div>
-                <div class="col-6 d-flex align-items-end">
-                  <span id="p1_abschlagsfrei_info" class="text-info small"></span>
-                </div>
+            <div class="row g-1">
+              <div class="col-6">
+                <label class="form-label mb-0" style="font-size:.75rem">Beitragsjahre</label>
+                <input type="number" class="form-control form-control-sm" id="p1_beitragsjahre" value="45" min="30" max="50" oninput="updateAbschlagInfo()">
+              </div>
+              <div class="col-6 d-flex align-items-end">
+                <span id="p1_abschlagsfrei_info" class="text-info small"></span>
               </div>
             </div>
           </div>
@@ -114,9 +133,20 @@
           </div>
 
           <div class="section-label">Betriebsrente (brutto)</div>
-          <div class="input-group input-group-sm mb-1">
-            <input type="number" class="form-control" id="p1_betriebsrente" value="0" min="0">
-            <span class="input-group-text">€/Monat</span>
+          <div class="row g-1 mb-1">
+            <div class="col-6">
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control" id="p1_betriebsrente" value="0" min="0">
+                <span class="input-group-text">€/Mon.</span>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                <input type="month" class="form-control" id="p1_betriebsrente_start" title="Beginn der Betriebsrente (leer = Rentenbeginn)">
+              </div>
+              <div class="text-muted" style="font-size:.68rem">Beginn (leer = Rentenbeginn)</div>
+            </div>
           </div>
 
           <div class="section-label">Private Rentenversicherungen</div>
@@ -578,7 +608,9 @@ function collectParams() {
     p1_birth_year: +g('p1_birth_year'), p1_birth_month: +g('p1_birth_month'),
     p1_pension_age: +g('p1_pension_age'),
     p1_abschlagsfrei: g('p1_abschlagsfrei'), p1_beitragsjahre: +g('p1_beitragsjahre'),
-    p1_gesetzliche_rente: +g('p1_gesetzliche_rente'), p1_betriebsrente: +g('p1_betriebsrente'),
+    p1_abschlag_custom_pct: g('p1_abschlag_custom_pct') === '' ? null : +g('p1_abschlag_custom_pct'),
+    p1_gesetzliche_rente: +g('p1_gesetzliche_rente'),
+    p1_betriebsrente: +g('p1_betriebsrente'), p1_betriebsrente_start: g('p1_betriebsrente_start'),
     p1_rv1_amount: +g('p1_rv1_amount'), p1_rv1_tax_pct: +g('p1_rv1_tax_pct'), p1_rv1_start_age: +g('p1_rv1_start_age'),
     p1_rv2_amount: +g('p1_rv2_amount'), p1_rv2_tax_pct: +g('p1_rv2_tax_pct'), p1_rv2_start_age: +g('p1_rv2_start_age'),
     p1_rv3_amount: +g('p1_rv3_amount'), p1_rv3_tax_pct: +g('p1_rv3_tax_pct'), p1_rv3_start_age: +g('p1_rv3_start_age'),
@@ -635,8 +667,13 @@ function updateAbschlagInfo() {
   const age = parseFloat(document.getElementById('p1_pension_age').value) || 67;
   const abschlagsfrei = document.getElementById('p1_abschlagsfrei').checked;
   const beitragsjahre = parseFloat(document.getElementById('p1_beitragsjahre').value) || 45;
+  const customEl = document.getElementById('p1_abschlag_custom_pct');
+  const autoDisplayEl = document.getElementById('p1_abschlag_auto_display');
   const infoEl = document.getElementById('p1_abschlag_info');
   const afInfoEl = document.getElementById('p1_abschlagsfrei_info');
+
+  const monthsEarly = Math.max(0, (67 - age) * 12);
+  const abschlagAuto = Math.min(monthsEarly * 0.3, 14.4);
 
   if (abschlagsfrei && age < 67) {
     const missing = 67 - age;
@@ -644,11 +681,26 @@ function updateAbschlagInfo() {
     const minderung = (1 - factor) * 100;
     infoEl.textContent = '';
     afInfoEl.textContent = `Minderung: ${minderung.toFixed(1)} % (${beitragsjahre}/${(beitragsjahre+missing).toFixed(1)} EP-Jahre)`;
+    autoDisplayEl.textContent = '0,0 % (abschlagsfrei)';
+    customEl.disabled = true;
+    customEl.placeholder = 'n/a';
   } else {
     afInfoEl.textContent = '';
-    const monthsEarly = Math.max(0, (67 - age) * 12);
-    const abschlag = Math.min(monthsEarly * 0.3, 14.4);
-    infoEl.textContent = abschlag > 0 ? `Abschlag: ${abschlag.toFixed(1)} %` : '';
+    customEl.disabled = false;
+    customEl.placeholder = 'auto';
+    autoDisplayEl.textContent = abschlagAuto > 0 ? `${abschlagAuto.toFixed(1)} %` : '0,0 %';
+    // Show effective abschlag in header info
+    const custom = customEl.value.trim();
+    const effective = custom !== '' ? parseFloat(custom) : abschlagAuto;
+    if (abschlagAuto > 0) {
+      const saved = abschlagAuto - effective;
+      infoEl.textContent = custom !== ''
+        ? `Effektiv: ${effective.toFixed(1)} % (${saved >= 0 ? '−' : '+'}${Math.abs(saved).toFixed(1)} % ausgeglichen)`
+        : `Auto: ${abschlagAuto.toFixed(1)} %`;
+      infoEl.style.color = custom !== '' && saved > 0 ? '#198754' : '#dc3545';
+    } else {
+      infoEl.textContent = '';
+    }
   }
 }
 
@@ -760,8 +812,18 @@ function renderSummary(result) {
   let metaHtml = `Renteneintritt: <strong>${meta.p1_pension_date||'—'}</strong> &nbsp;|&nbsp; `;
   if (meta.p1_abschlagsfrei && meta.p1_abschlagsfrei_info) {
     metaHtml += `<span class="text-info">${meta.p1_abschlagsfrei_info}</span>`;
+  } else if (meta.p1_abschlag_auto_pct > 0) {
+    const auto = meta.p1_abschlag_auto_pct;
+    const eff  = meta.p1_abschlag_pct;
+    const saved = auto - eff;
+    metaHtml += `Abschlag berechnet: <strong>${auto} %</strong>`;
+    if (saved > 0.01) {
+      metaHtml += ` &rarr; effektiv: <strong class="text-success">${eff} %</strong> <span class="text-success">(${saved.toFixed(2)} % ausgeglichen)</span>`;
+    } else {
+      metaHtml += ` &rarr; effektiv: <strong class="text-danger">${eff} %</strong>`;
+    }
   } else {
-    metaHtml += `Abschlag: <strong>${meta.p1_abschlag_pct||0} %</strong>`;
+    metaHtml += `Abschlag: <strong>0 %</strong>`;
   }
   metaHtml += ` &nbsp;|&nbsp; Rentenanteil stpfl.: <strong>${meta.p1_renten_stpfl_anteil_pct||0} %</strong>`;
   metaHtml += ` &nbsp;|&nbsp; Rentenfaktor: <strong>${meta.p1_rente_faktor||100} %</strong>`;
